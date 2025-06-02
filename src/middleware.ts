@@ -1,11 +1,32 @@
-import { NextResponse, type NextRequest } from 'next/server';
-import { getTunnels } from '@/lib/configServer';
 
-// This middleware should run in a Node.js environment if getTunnels uses 'fs'.
-// For Vercel, this might require specific configuration or an alternative approach for config.
+import { NextResponse, type NextRequest } from 'next/server';
+// Removed direct import of getTunnels: import { getTunnels } from '@/lib/configServer';
+import type { Tunnel } from '@/types/tunnel';
+
+async function fetchTunnels(request: NextRequest): Promise<Tunnel[]> {
+  try {
+    // Construct the base URL dynamically
+    const host = request.headers.get('host') || 'localhost:3000';
+    const protocol = request.nextUrl.protocol; // Use the protocol of the incoming request
+    const baseUrl = `${protocol}//${host}`;
+    
+    const response = await fetch(`${baseUrl}/api/tunnels`, {
+      next: { revalidate: 10 } // Revalidate tunnel data every 10 seconds, or adjust as needed
+    });
+    if (!response.ok) {
+      console.error(`Error fetching tunnels: ${response.status} ${response.statusText}`);
+      return [];
+    }
+    return await response.json() as Tunnel[];
+  } catch (error) {
+    console.error('Failed to fetch tunnels in middleware:', error);
+    return [];
+  }
+}
+
 
 export async function middleware(request: NextRequest) {
-  const tunnels = await getTunnels();
+  const tunnels = await fetchTunnels(request);
   const host = request.headers.get('host') || '';
   const pathname = request.nextUrl.pathname;
 
@@ -13,7 +34,7 @@ export async function middleware(request: NextRequest) {
 
   // Allow requests to Next.js internals and specific API routes for management and proxying
   if (pathname.startsWith('/_next/') || 
-      pathname.startsWith('/api/tunnels') || // Management API for tunnels (if any)
+      pathname.startsWith('/api/tunnels') || // API for fetching tunnels (used by this middleware)
       pathname.startsWith('/api/proxy-handler') || // Internal proxy handler
       pathname.startsWith('/api/not-found') || // Internal not-found handler
       pathname.includes('favicon.ico')) { // Static assets
@@ -70,6 +91,5 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   // Match all paths except for Next.js specific paths and static assets.
-  // Excludes /api/auth by default from template, keeping it.
   matcher: ['/((?!api/auth|_next/static|_next/image|favicon.ico|img/).*)'],
 };
