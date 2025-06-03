@@ -65,14 +65,12 @@ export async function middleware(request: NextRequest) {
       const rewriteUrl = request.nextUrl.clone();
       rewriteUrl.pathname = `/api/proxy-handler`;
       rewriteUrl.searchParams.set('target', targetFullUrl.toString());
-      rewriteUrl.searchParams.set('originalHost', host);
-
-      console.log(`[ Middleware: Rewriting to URL: ${rewriteUrl.toString()} ]`);
-      
+      rewriteUrl.searchParams.set('originalHost', host); // Pass original host for X-Forwarded-Host
       return NextResponse.rewrite(rewriteUrl);
     }
   }
 
+  // If on main domain, and not matched by a path proxy, assume it's a Next.js app asset or page.
   if (host === mainAppDomain) {
     return NextResponse.next();
   }
