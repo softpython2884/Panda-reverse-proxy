@@ -1,12 +1,30 @@
+
 import { type NextRequest, NextResponse } from 'next/server';
 
 // Generic handler for all HTTP methods
 async function handler(request: NextRequest) {
-  const target = request.nextUrl.searchParams.get('target');
-  const originalHost = request.nextUrl.searchParams.get('originalHost') || request.headers.get('host');
+  const target = request.headers.get('X-Proxy-Target-URL');
+  const originalHost = request.headers.get('X-Proxy-Original-Host');
 
   if (!target) {
     console.error('Proxy Handler: Target URL not provided.');
+    console.log('--- Start Headers Received by Proxy Handler ---');
+    let foundHeader = false;
+    request.headers.forEach((value, key) => {
+      console.log(`Header: "${key}": "${value}"`);
+      if (key.toLowerCase() === 'x-proxy-target-url') { // Check lowercased too
+        foundHeader = true;
+        console.log(`>>> Found potential target header with key: ${key} and value: ${value}`);
+      }
+    });
+    if (!foundHeader) {
+        console.log(">>> 'X-Proxy-Target-URL' (case-insensitive) not found in received headers.");
+    }
+    console.log('--- End Headers Received by Proxy Handler ---');
+    console.log('Request URL in proxy-handler (request.url):', request.url);
+    console.log('Request NextURL in proxy-handler (request.nextUrl.toString()):', request.nextUrl.toString());
+
+
     return new Response('Target URL not provided for proxy.', { status: 500 });
   }
 
@@ -26,7 +44,7 @@ async function handler(request: NextRequest) {
 
 
     // Log the proxy attempt
-    console.log(`[${new Date().toISOString()}] Proxying to: ${request.method} ${targetUrl.toString()} (Original host: ${originalHost})`);
+    console.log(`[${new Date().toISOString()}] Proxying to: ${request.method} ${targetUrl.toString()} (Original host: ${originalHost || 'N/A'})`);
 
     const proxyResponse = await fetch(targetUrl.toString(), {
       method: request.method,
