@@ -3,84 +3,65 @@ import { type NextRequest, NextResponse } from 'next/server';
 
 // Generic handler for all HTTP methods
 async function handler(request: NextRequest) {
-<<<<<<< HEAD
-  const target = request.nextUrl.searchParams.get('target');
-  const originalHost = request.nextUrl.searchParams.get('originalHost');
-=======
-  const target = request.headers.get('X-Proxy-Target-Url');
-  const originalHost = request.headers.get('X-Proxy-Original-Host') || request.headers.get('host');
->>>>>>> master
-
   console.log('--- Start Proxy Handler Invocation ---');
   console.log('Request URL in proxy-handler (request.url):', request.url);
   console.log('Request NextURL in proxy-handler (request.nextUrl.toString()):', request.nextUrl.toString());
+  console.log('RAW SEARCH PARAMS in proxy-handler:', request.nextUrl.search);
+
+  const searchParams = request.nextUrl.searchParams;
+  console.log('SEARCHPARAMS OBJECT in proxy-handler:', Object.fromEntries(searchParams.entries()));
+
+  const target = searchParams.get('target');
+  const originalHost = searchParams.get('originalHost');
+
   console.log('Attempting to read target from query param:', target);
   console.log('Attempting to read originalHost from query param:', originalHost);
-  
+
   if (!target) {
-<<<<<<< HEAD
     console.error('Proxy Handler: Target URL not provided in query parameters.');
-    console.log('--- Headers Received by Proxy Handler ---');
+    // Log headers again if target is not found in query params, to see if they arrived differently
+    console.log('--- Headers Received by Proxy Handler (when target is missing from query) ---');
     request.headers.forEach((value, key) => {
       console.log(`Header: "${key}": "${value}"`);
     });
-    console.log('--- End Headers Received by Proxy Handler ---');
-=======
-    console.error('Proxy Handler: Target URL not provided in headers.');
->>>>>>> master
+    console.log('--- End Headers ---');
     return new Response('Target URL not provided for proxy.', { status: 500 });
   }
 
   try {
     const targetUrl = new URL(target);
 
-<<<<<<< HEAD
     const headersToForward = new Headers(request.headers);
-    headersToForward.delete('host'); 
-=======
-    const headers = new Headers(request.headers);
-    // We are already passing X-Proxy-Target-Url and X-Proxy-Original-Host.
-    // For the actual fetch to the target, we should use the target's host,
-    // and remove our custom proxy headers or any sensitive ones.
-    headers.delete('host'); 
-    headers.delete('X-Proxy-Target-Url');
-    headers.delete('X-Proxy-Original-Host');
-    
->>>>>>> master
+    // We are passing originalHost separately. For the actual fetch to the target,
+    // we should use the target's host, and remove our custom proxy headers or any sensitive ones.
+    headersToForward.delete('host'); // Use the host of the targetUrl for the fetch
+
     if (originalHost) {
       headersToForward.set('X-Forwarded-Host', originalHost);
     }
-    
-<<<<<<< HEAD
-    const clientIp = request.headers.get('x-forwarded-for') || request.headers.get('remote-addr') || 'unknown';
+
+    // Use x-forwarded-for from incoming request
+    const clientIp = request.headers.get('x-forwarded-for') || 'unknown';
     headersToForward.set('X-Forwarded-For', clientIp);
     headersToForward.set('X-Forwarded-Proto', request.nextUrl.protocol.replace(':', ''));
 
     console.log(`[${new Date().toISOString()}] Proxying to: ${request.method} ${targetUrl.toString()} (Original host: ${originalHost || 'N/A'})`);
-    console.log('Headers being forwarded to target:');
-    headersToForward.forEach((value, key) => {
-      console.log(`  ${key}: ${value}`);
-    });
-=======
-    const ip = request.ip || request.headers.get('x-forwarded-for') || 'unknown';
-    headers.set('X-Forwarded-For', ip);
-    headers.set('X-Forwarded-Proto', request.nextUrl.protocol.replace(':', ''));
-
-
-    console.log(`[${new Date().toISOString()}] Proxying to: ${request.method} ${targetUrl.toString()} (Original host: ${originalHost})`);
->>>>>>> master
+    // console.log('Headers being forwarded to target:');
+    // headersToForward.forEach((value, key) => {
+    //   console.log(`  ${key}: ${value}`);
+    // });
 
     const proxyResponse = await fetch(targetUrl.toString(), {
       method: request.method,
       headers: headersToForward,
       body: (request.method !== 'GET' && request.method !== 'HEAD') ? request.body : undefined,
-      // @ts-ignore 
-      duplex: 'half', 
-      redirect: 'manual', 
+      // @ts-ignore
+      duplex: 'half',
+      redirect: 'manual',
     });
 
     console.log(`[${new Date().toISOString()}] Response from target ${targetUrl.toString()}: ${proxyResponse.status}`);
-    
+
     const responseHeaders = new Headers(proxyResponse.headers);
 
     return new Response(proxyResponse.body, {
@@ -92,7 +73,7 @@ async function handler(request: NextRequest) {
   } catch (error) {
     console.error(`[${new Date().toISOString()}] Proxy error for target ${target}:`, error);
     const errorMessage = error instanceof Error ? error.message : 'Proxy request failed.';
-    return new Response(`<html><body style="font-family: sans-serif; padding: 20px;"><h1>502 Bad Gateway</h1><p>The proxy server received an invalid response from the upstream server.</p><p>Error: ${errorMessage}</p></body></html>`, { 
+    return new Response(`<html><body style="font-family: sans-serif; padding: 20px;"><h1>502 Bad Gateway</h1><p>The proxy server received an invalid response from the upstream server.</p><p>Error: ${errorMessage}</p></body></html>`, {
       status: 502,
       headers: { 'Content-Type': 'text/html' }
     });
