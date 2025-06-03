@@ -2,107 +2,112 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { getTunnels, saveTunnels } from '@/lib/configServer';
 import type { Tunnel } from '@/types/tunnel';
 import { v4 as uuidv4 } from 'uuid';
 
+const REMOTE_API_URL = 'https://panda.nationquest.fr/api/external-tunnels';
 
 export async function addTunnelAction(formData: Omit<Tunnel, 'id' | 'createdAt'>): Promise<{ success: boolean; message?: string }> {
   try {
-    const tunnels = await getTunnels();
-    
+    let processedFormData = { ...formData };
     // Normalize path-based routes
-    if (formData.type === 'path' && formData.route && !formData.route.startsWith('/')) {
-      formData.route = `/${formData.route}`;
+    if (processedFormData.type === 'path' && processedFormData.route && !processedFormData.route.startsWith('/')) {
+      processedFormData.route = `/${processedFormData.route}`;
     }
-    if (formData.type === 'path' && formData.route === '/') {
+    if (processedFormData.type === 'path' && processedFormData.route === '/') {
         // Allow root path proxying if explicitly set to just "/"
-    } else if (formData.type === 'path' && (!formData.route || formData.route.length < 2)) {
+    } else if (processedFormData.type === 'path' && (!processedFormData.route || processedFormData.route.length < 2)) {
         return { success: false, message: 'Path route must be at least one character long after the leading slash (e.g., /p).' };
     }
 
-
-    const newTunnel: Tunnel = {
-      ...formData,
-      id: uuidv4(),
-      createdAt: new Date().toISOString(),
-    };
-
     // Validate target URL format
     try {
-      new URL(newTunnel.target);
+      new URL(processedFormData.target);
     } catch (e) {
       return { success: false, message: 'Invalid target URL format.' };
     }
     
-    // Prevent duplicate routes
-    if (tunnels.some(t => t.type === newTunnel.type && t.route === newTunnel.route)) {
-        return { success: false, message: `A ${newTunnel.type} route for '${newTunnel.route}' already exists.` };
+    const newTunnelData = {
+      ...processedFormData,
+      // id and createdAt will likely be set by the remote server,
+      // but we might need to send them if the API expects them for creation.
+      // For this example, we assume the remote API handles ID and createdAt.
+    };
+
+    const response = await fetch(REMOTE_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(newTunnelData),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ message: `Failed to add tunnel. Status: ${response.status}` }));
+      return { success: false, message: errorData.message || `Failed to add tunnel. Status: ${response.status}` };
     }
 
-    tunnels.push(newTunnel);
-    await saveTunnels(tunnels);
-    revalidatePath('/');
+    revalidatePath('/'); // Revalidate the page to show the new tunnel
     return { success: true };
   } catch (error) {
-    return { success: false, message: error instanceof Error ? error.message : 'Failed to add tunnel.' };
+    return { success: false, message: error instanceof Error ? error.message : 'Failed to add tunnel due to a network or unexpected error.' };
   }
 }
 
 export async function updateTunnelAction(tunnelId: string, formData: Omit<Tunnel, 'id' | 'createdAt'>): Promise<{ success: boolean; message?: string }> {
   try {
-    let tunnels = await getTunnels();
-    const tunnelIndex = tunnels.findIndex(t => t.id === tunnelId);
-
-    if (tunnelIndex === -1) {
-      return { success: false, message: 'Tunnel not found.' };
-    }
-
+    let processedFormData = { ...formData };
     // Normalize path-based routes
-    if (formData.type === 'path' && formData.route && !formData.route.startsWith('/')) {
-      formData.route = `/${formData.route}`;
+    if (processedFormData.type === 'path' && processedFormData.route && !processedFormData.route.startsWith('/')) {
+      processedFormData.route = `/${processedFormData.route}`;
     }
-    if (formData.type === 'path' && formData.route === '/') {
+    if (processedFormData.type === 'path' && processedFormData.route === '/') {
         // Allow root path proxying if explicitly set to just "/"
-    } else if (formData.type === 'path' && (!formData.route || formData.route.length < 2 ) ) {
+    } else if (processedFormData.type === 'path' && (!processedFormData.route || processedFormData.route.length < 2 ) ) {
          return { success: false, message: 'Path route must be at least one character long after the leading slash (e.g., /p).' };
     }
     
     // Validate target URL format
     try {
-      new URL(formData.target);
+      new URL(processedFormData.target);
     } catch (e) {
       return { success: false, message: 'Invalid target URL format.' };
     }
 
-    // Prevent duplicate routes (if route is changed)
-    if (tunnels.some(t => t.id !== tunnelId && t.type === formData.type && t.route === formData.route)) {
-        return { success: false, message: `Another ${formData.type} route for '${formData.route}' already exists.` };
-    }
+    const response = await fetch(`${REMOTE_API_URL}/${tunnelId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(processedFormData),
+    });
 
-    const existingTunnel = tunnels[tunnelIndex];
-    tunnels[tunnelIndex] = {
-      ...existingTunnel,
-      ...formData,
-    };
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ message: `Failed to update tunnel. Status: ${response.status}` }));
+      return { success: false, message: errorData.message || `Failed to update tunnel. Status: ${response.status}` };
+    }
     
-    await saveTunnels(tunnels);
     revalidatePath('/');
     return { success: true };
   } catch (error) {
-    return { success: false, message: error instanceof Error ? error.message : 'Failed to update tunnel.' };
+    return { success: false, message: error instanceof Error ? error.message : 'Failed to update tunnel due to a network or unexpected error.' };
   }
 }
 
 export async function deleteTunnelAction(tunnelId: string): Promise<{ success: boolean; message?: string }> {
   try {
-    let tunnels = await getTunnels();
-    tunnels = tunnels.filter(t => t.id !== tunnelId);
-    await saveTunnels(tunnels);
+    const response = await fetch(`${REMOTE_API_URL}/${tunnelId}`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ message: `Failed to delete tunnel. Status: ${response.status}` }));
+      return { success: false, message: errorData.message || `Failed to delete tunnel. Status: ${response.status}` };
+    }
+
     revalidatePath('/');
     return { success: true };
   } catch (error) {
-    return { success: false, message: error instanceof Error ? error.message : 'Failed to delete tunnel.' };
+    return { success: false, message: error instanceof Error ? error.message : 'Failed to delete tunnel due to a network or unexpected error.' };
   }
 }
-
