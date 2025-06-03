@@ -1,3 +1,4 @@
+
 'use server';
 
 import { revalidatePath } from 'next/cache';
@@ -9,6 +10,18 @@ import { v4 as uuidv4 } from 'uuid';
 export async function addTunnelAction(formData: Omit<Tunnel, 'id' | 'createdAt'>): Promise<{ success: boolean; message?: string }> {
   try {
     const tunnels = await getTunnels();
+    
+    // Normalize path-based routes
+    if (formData.type === 'path' && formData.route && !formData.route.startsWith('/')) {
+      formData.route = `/${formData.route}`;
+    }
+    if (formData.type === 'path' && formData.route === '/') {
+        // Allow root path proxying if explicitly set to just "/"
+    } else if (formData.type === 'path' && (!formData.route || formData.route.length < 2)) {
+        return { success: false, message: 'Path route must be at least one character long after the leading slash (e.g., /p).' };
+    }
+
+
     const newTunnel: Tunnel = {
       ...formData,
       id: uuidv4(),
@@ -43,6 +56,16 @@ export async function updateTunnelAction(tunnelId: string, formData: Omit<Tunnel
 
     if (tunnelIndex === -1) {
       return { success: false, message: 'Tunnel not found.' };
+    }
+
+    // Normalize path-based routes
+    if (formData.type === 'path' && formData.route && !formData.route.startsWith('/')) {
+      formData.route = `/${formData.route}`;
+    }
+    if (formData.type === 'path' && formData.route === '/') {
+        // Allow root path proxying if explicitly set to just "/"
+    } else if (formData.type === 'path' && (!formData.route || formData.route.length < 2 ) ) {
+         return { success: false, message: 'Path route must be at least one character long after the leading slash (e.g., /p).' };
     }
     
     // Validate target URL format
@@ -82,3 +105,4 @@ export async function deleteTunnelAction(tunnelId: string): Promise<{ success: b
     return { success: false, message: error instanceof Error ? error.message : 'Failed to delete tunnel.' };
   }
 }
+
